@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-    "strings"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
 	"github.com/tehmaze/netflow"
+	"github.com/tehmaze/netflow/ipfix"
 	"github.com/tehmaze/netflow/netflow5"
 	"github.com/tehmaze/netflow/netflow9"
 	"github.com/tehmaze/netflow/session"
@@ -131,7 +132,7 @@ func (c *netflowCollector) processReader(udpSock *net.UDPConn) {
 					}
 					if (len(counts) > 0) && (len(labels) > 0) {
 						labels["From"] = srcAddress.IP.String()
-						labels["TemplateID"] = fmt.Sprintf("%d",record.TemplateID)
+						labels["TemplateID"] = fmt.Sprintf("%d", record.TemplateID)
 						labels["NetflowVersion"] = "9"
 
 						sample := &netflowSample{
@@ -144,6 +145,39 @@ func (c *netflowCollector) processReader(udpSock *net.UDPConn) {
 					}
 				}
 			}
+
+		case *ipfix.Message:
+			for _, set := range p.DataSets {
+				for _, record := range set.Records {
+					labels := prometheus.Labels{}
+					counts := make(map[string]float64)
+					for _, field := range record.Fields {
+						if len(*netflowExclude) > 0 && regexp.MustCompile(*netflowExclude).MatchString(field.Translated.Name) {
+							//log.Infoln(field,"is not using label")
+						} else if regexp.MustCompile(*netflowCollects).MatchString(field.Translated.Name) {
+							counts[field.Translated.Name] = float64(field.Translated.Value.(uint64))
+							//log.Infoln(field,"is using metric")
+						} else {
+							labels[field.Translated.Name] = fmt.Sprintf("%v", field.Translated.Value)
+						}
+
+					}
+					if (len(counts) > 0) && (len(labels) > 0) {
+						labels["From"] = srcAddress.IP.String()
+						labels["TemplateID"] = fmt.Sprintf("%d", record.TemplateID)
+						labels["NetflowVersion"] = "9"
+
+						sample := &netflowSample{
+							Labels:      labels,
+							Counts:      counts,
+							TimestampMs: timestampMs,
+						}
+						lastProcessed.Set(float64(time.Now().UnixNano()) / 1e9)
+						c.ch <- sample
+					}
+				}
+			}
+
 		default:
 			log.Infoln("packet is not supported version")
 		}
@@ -208,14 +242,14 @@ func (c *netflowCollector) Collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 		for key, value := range sample.Counts {
-            desc :=""
+			desc := ""
 			if sample.Labels["TemplateID"] != "" {
 				desc = fmt.Sprintf("netflow_%s_TemplateID%s_%s", sample.Labels["From"], sample.Labels["TemplateID"], key)
 			} else {
 				desc = fmt.Sprintf("netflow_%s_%s", sample.Labels["From"], key)
 			}
-            desc = strings.Replace(desc,".","",-1)
-            log.Infoln(desc)
+			desc = strings.Replace(desc, ".", "", -1)
+			log.Infoln(desc)
 			ch <- MustNewTimeConstMetric(
 				prometheus.NewDesc(desc,
 					fmt.Sprintf("netflow metric %s", key),
