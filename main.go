@@ -152,16 +152,18 @@ func (c *netflowCollector) processReader(udpSock *net.UDPConn) {
 					labels := prometheus.Labels{}
 					counts := make(map[string]float64)
 					for _, field := range record.Fields {
-						if len(*netflowExclude) > 0 && regexp.MustCompile(*netflowExclude).MatchString(field.Translated.Name) {
-							//log.Infoln(field,"is not using label")
-						} else if regexp.MustCompile(*netflowCollects).MatchString(field.Translated.Name) {
-							counts[field.Translated.Name] = float64(field.Translated.Value.(uint64))
-							//log.Infoln(field,"is using metric")
-						} else {
-							labels[field.Translated.Name] = fmt.Sprintf("%v", field.Translated.Value)
+						if len(field.Translated.Name) > 0 {
+							if len(*netflowExclude) > 0 && regexp.MustCompile(*netflowExclude).MatchString(field.Translated.Name) {
+								//log.Infoln(field,"is not using label")
+							} else if regexp.MustCompile(*netflowCollects).MatchString(field.Translated.Name) {
+								counts[field.Translated.Name] = float64(field.Translated.Value.(uint64))
+								//log.Infoln(field,"is using metric")
+							} else {
+								labels[field.Translated.Name] = fmt.Sprintf("%v", field.Translated.Value)
+							}
 						}
-
 					}
+
 					if (len(counts) > 0) && (len(labels) > 0) {
 						labels["From"] = srcAddress.IP.String()
 						labels["TemplateID"] = fmt.Sprintf("%d", record.TemplateID)
