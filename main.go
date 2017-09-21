@@ -167,7 +167,7 @@ func (c *netflowCollector) processReader(udpSock *net.UDPConn) {
 					if (len(counts) > 0) && (len(labels) > 0) {
 						labels["From"] = srcAddress.IP.String()
 						labels["TemplateID"] = fmt.Sprintf("%d", record.TemplateID)
-						labels["NetflowVersion"] = "9"
+						labels["NetflowVersion"] = "10"
 
 						sample := &netflowSample{
 							Labels:      labels,
